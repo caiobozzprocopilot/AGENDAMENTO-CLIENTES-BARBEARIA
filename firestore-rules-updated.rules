@@ -1,0 +1,202 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Função auxiliar para verificar se o usuário está autenticado
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Função para verificar se é admin (baseado no UID do documento)
+    function isAdmin() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/Admins/$(request.auth.uid));
+    }
+    
+    // Função para verificar se o documento pertence ao usuário
+    // Agora verifica se o userId do documento corresponde ao docId do usuário no Firestore
+    function isOwner(userId) {
+      return isAuthenticated() && userId == request.auth.uid;
+    }
+    
+    // Função para verificar se o documento sendo criado tem o userId correto
+    function hasValidUserId() {
+      return isAuthenticated() && request.resource.data.userId == request.auth.uid;
+    }
+    
+    // Nova função para verificar se o userId do documento corresponde ao docId da barbearia
+    function isOwnerByDocId(userId) {
+      // Verifica se existe um documento em usuarios com esse userId que tem o uid do usuário autenticado
+      return isAuthenticated() && (
+        request.auth.uid == userId ||
+        exists(/databases/$(database)/documents/usuarios/$(userId)) && 
+        get(/databases/$(database)/documents/usuarios/$(userId)).data.uid == request.auth.uid
+      );
+    }
+    
+    // ========================================
+    // ADMINS (controle de acesso administrativo)
+    // ========================================
+    match /Admins/{adminId} {
+      // Apenas admins podem ler e escrever na coleção de admins
+      allow read, write: if false; // Gerenciar manualmente via console
+    }
+    
+    // ========================================
+    // SERVIÇOS REALIZADOS (barberShopServices)
+    // ========================================
+    match /barberShopServices/{serviceId} {
+      // Leitura: admin ou apenas serviços do próprio usuário
+      allow read: if isAuthenticated() && (isAdmin() || isOwnerByDocId(resource.data.userId));
+      
+      // Criação: apenas com userId válido (docId ou uid)
+      allow create: if isAuthenticated() && isOwnerByDocId(request.resource.data.userId);
+      
+      // Atualização: apenas serviços do próprio usuário
+      allow update: if isAuthenticated() && isOwnerByDocId(resource.data.userId) && isOwnerByDocId(request.resource.data.userId);
+      
+      // Exclusão: apenas serviços do próprio usuário
+      allow delete: if isAuthenticated() && isOwnerByDocId(resource.data.userId);
+    }
+    
+    // ========================================
+    // BARBEIROS (Coleção Raiz)
+    // ========================================
+    match /barbeiros/{barbeiroId} {
+      // Leitura: permitir leitura pública (para app de clientes)
+      allow read: if true;
+      
+      // Criação: apenas com userId válido
+      allow create: if isAuthenticated() && isOwnerByDocId(request.resource.data.userId);
+      
+      // Atualização: apenas barbeiros do próprio usuário
+      allow update: if isAuthenticated() && isOwnerByDocId(resource.data.userId) && isOwnerByDocId(request.resource.data.userId);
+      
+      // Exclusão: apenas barbeiros do próprio usuário
+      allow delete: if isAuthenticated() && isOwnerByDocId(resource.data.userId);
+    }
+    
+    // ========================================
+    // SERVIÇOS (Catálogo - Coleção Raiz)
+    // ========================================
+    match /servicos/{servicoId} {
+      // Leitura: permitir leitura pública (para app de clientes)
+      allow read: if true;
+      
+      // Criação: apenas com userId válido
+      allow create: if isAuthenticated() && isOwnerByDocId(request.resource.data.userId);
+      
+      // Atualização: apenas serviços do próprio usuário
+      allow update: if isAuthenticated() && isOwnerByDocId(resource.data.userId) && isOwnerByDocId(request.resource.data.userId);
+      
+      // Exclusão: apenas serviços do próprio usuário
+      allow delete: if isAuthenticated() && isOwnerByDocId(resource.data.userId);
+    }
+    
+    // ========================================
+    // MOVIMENTAÇÕES DO CAIXA (movimentacoesCaixa) - Corrigido
+    // ========================================
+    match /movimentacoesCaixa/{movimentacaoId} {
+      // Leitura: admin ou apenas movimentações do próprio usuário
+      allow read: if isAuthenticated() && (isAdmin() || isOwnerByDocId(resource.data.userId));
+      
+      // Criação: apenas com userId válido
+      allow create: if isAuthenticated() && isOwnerByDocId(request.resource.data.userId);
+      
+      // Atualização: apenas movimentações do próprio usuário
+      allow update: if isAuthenticated() && isOwnerByDocId(resource.data.userId) && isOwnerByDocId(request.resource.data.userId);
+      
+      // Exclusão: apenas movimentações do próprio usuário
+      allow delete: if isAuthenticated() && isOwnerByDocId(resource.data.userId);
+    }
+    
+    // ========================================
+    // USUÁRIOS/PERFIS (usuarios) - Atualizado para APP DE CLIENTES
+    // ========================================
+    match /usuarios/{userId} {
+      // LEITURA: Permitir leitura pública dos perfis básicos (para lista de barbearias no app de clientes)
+      // Campos como nome, email, telefone são públicos para clientes escolherem a barbearia
+      allow read: if true;
+      
+      // Permitir criar se o documento contém o UID correto do usuário autenticado
+      // Aceita qualquer formato de ID desde que o campo uid seja do usuário atual
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
+      
+      // Permitir atualizar se:
+      // 1. É admin (pode editar qualquer usuário) OU
+      // 2. É o próprio usuário editando seu perfil
+      allow update: if isAuthenticated() && (
+        isAdmin() || 
+        resource.data.uid == request.auth.uid
+      );
+      
+      // Não permitir delete (gerenciar via console)
+      allow delete: if false;
+      
+      // ========================================
+      // SUBCOLEÇÕES DO USUÁRIO - PARA APP DE CLIENTES
+      // ========================================
+      
+      // BARBEIROS - Leitura pública para app de clientes
+      match /barbeiros/{barbeiroId} {
+        // LEITURA: Permitir acesso público (para clientes escolherem barbeiro)
+        allow read: if true;
+        
+        // ESCRITA: Apenas o dono da barbearia
+        allow write: if isAuthenticated() && request.auth.uid == get(/databases/$(database)/documents/usuarios/$(userId)).data.uid;
+      }
+      
+      // SERVIÇOS - Leitura pública para app de clientes
+      match /servicos/{servicoId} {
+        // LEITURA: Permitir acesso público (para clientes escolherem serviço)
+        allow read: if true;
+        
+        // ESCRITA: Apenas o dono da barbearia
+        allow write: if isAuthenticated() && request.auth.uid == get(/databases/$(database)/documents/usuarios/$(userId)).data.uid;
+      }
+      
+      // CLIENTES - Apenas dono da barbearia
+      match /clientes/{clienteId} {
+        // Usuário pode acessar apenas suas próprias subcoleções
+        allow read, write: if isAuthenticated() && request.auth.uid == get(/databases/$(database)/documents/usuarios/$(userId)).data.uid;
+      }
+      
+      // AGENDAMENTOS - Permitir criação pública, leitura apenas para dono
+      match /agendamentos/{agendamentoId} {
+        // LEITURA: Apenas o dono da barbearia autenticado
+        allow read: if isAuthenticated() && request.auth.uid == get(/databases/$(database)/documents/usuarios/$(userId)).data.uid;
+        
+        // CRIAÇÃO: Permitir clientes não autenticados criarem agendamentos
+        // Validar que os campos obrigatórios estão presentes
+        allow create: if request.resource.data.keys().hasAll([
+          'clienteNome', 
+          'clienteTelefone', 
+          'data', 
+          'hora', 
+          'servico',
+          'preco',
+          'status'
+        ]) && request.resource.data.status == 'pendente';
+        
+        // ATUALIZAÇÃO/EXCLUSÃO: Apenas o dono da barbearia
+        allow update, delete: if isAuthenticated() && request.auth.uid == get(/databases/$(database)/documents/usuarios/$(userId)).data.uid;
+      }
+      
+      // PERFIL - Leitura pública para app de clientes (nome, telefone da barbearia)
+      match /perfil/{perfilId} {
+        // LEITURA: Permitir leitura pública do perfil (para app de clientes mostrar dados da barbearia)
+        allow read: if true;
+        
+        // ESCRITA: Apenas o dono da barbearia
+        allow write: if isAuthenticated() && request.auth.uid == get(/databases/$(database)/documents/usuarios/$(userId)).data.uid;
+      }
+    }
+    
+    // ========================================
+    // REGRA PADRÃO (fallback)
+    // ========================================
+    // Bloqueia acesso a qualquer outra coleção não especificada
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

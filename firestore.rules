@@ -1,0 +1,33 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Regras para o sistema multi-tenant de barbearias
+    match /usuarios/{userId}/{document=**} {
+      // Permitir leitura pública dos dados das barbearias
+      // (necessário para o app de agendamento de clientes)
+      allow read: if true;
+      
+      // Permitir escrita em agendamentos para qualquer um
+      // (clientes podem criar seus próprios agendamentos)
+      allow create: if request.resource.data.keys().hasAll([
+        'clienteNome', 
+        'clienteTelefone', 
+        'data', 
+        'hora', 
+        'servico', 
+        'preco'
+      ]);
+      
+      // Permitir atualização e deleção apenas para usuários autenticados
+      // que sejam donos da barbearia
+      allow update, delete: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Regra mais permissiva para desenvolvimento/testes
+    // ATENÇÃO: Em produção, use as regras acima que são mais seguras
+    // match /{document=**} {
+    //   allow read, write: if true;
+    // }
+  }
+}
