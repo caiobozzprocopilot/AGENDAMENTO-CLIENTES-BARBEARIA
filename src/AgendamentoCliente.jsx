@@ -72,10 +72,28 @@ const AgendamentoCliente = () => {
     setLoading(true);
     try {
       const usuariosSnap = await getDocs(collection(db, 'usuarios'));
-      const usuariosData = usuariosSnap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      const usuariosPromises = usuariosSnap.docs.map(async (docSnap) => {
+        const barbeariaData = {
+          id: docSnap.id,
+          ...docSnap.data()
+        };
+        
+        // Tentar carregar o perfil para pegar o logo
+        try {
+          const perfilSnap = await getDocs(collection(db, `usuarios/${docSnap.id}/perfil`));
+          if (!perfilSnap.empty) {
+            const perfilData = perfilSnap.docs[0].data();
+            barbeariaData.logoURL = perfilData.logoURL;
+            barbeariaData.nome = perfilData.nome || barbeariaData.nome;
+          }
+        } catch (err) {
+          console.log('⚠️ Erro ao carregar perfil da barbearia:', docSnap.id);
+        }
+        
+        return barbeariaData;
+      });
+      
+      const usuariosData = await Promise.all(usuariosPromises);
       setBarbearias(usuariosData);
       console.log('✅ Barbearias carregadas:', usuariosData.length);
     } catch (error) {
@@ -110,6 +128,12 @@ const AgendamentoCliente = () => {
         const perfilSnap = await getDocs(collection(db, `usuarios/${uid}/perfil`));
         if (!perfilSnap.empty) {
           const perfilData = perfilSnap.docs[0].data();
+          
+          // Carregar logo se existir
+          if (perfilData.logoURL) {
+            console.log('✅ Logo encontrado:', perfilData.logoURL);
+          }
+          
           setPerfilBarbearia(perfilData);
           console.log('✅ Perfil carregado:', perfilData);
         } else {
@@ -416,7 +440,21 @@ const AgendamentoCliente = () => {
               className="p-6 rounded-lg border-2 border-gray-200 bg-white hover:border-gray-800 hover:shadow-md transition-all duration-200 text-left group"
             >
               <div className="flex items-center gap-4">
-                <div className={`w-16 h-16 rounded-full ${coresAvatar[index % coresAvatar.length]} flex items-center justify-center text-white font-bold text-2xl flex-shrink-0`}>
+                {barbearia.logoURL ? (
+                  <img 
+                    src={barbearia.logoURL} 
+                    alt={barbearia.nome || 'Logo'} 
+                    className="w-16 h-16 rounded-full object-cover flex-shrink-0 border-2 border-gray-200"
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      e.target.nextSibling.style.display = 'flex';
+                    }}
+                  />
+                ) : null}
+                <div 
+                  className={`w-16 h-16 rounded-full ${coresAvatar[index % coresAvatar.length]} flex items-center justify-center text-white font-bold text-2xl flex-shrink-0 ${barbearia.logoURL ? 'hidden' : ''}`}
+                  style={barbearia.logoURL ? { display: 'none' } : {}}
+                >
                   {barbearia.nome ? obterIniciais(barbearia.nome) : <Store className="w-8 h-8" />}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -799,9 +837,19 @@ const AgendamentoCliente = () => {
                 <span>Trocar</span>
               </button>
             )}
-            <h1 className="text-2xl font-bold flex-1 text-center">
-              {perfilBarbearia?.nome || 'Agendamento Online'}
-            </h1>
+            <div className="flex-1 flex flex-col items-center gap-2">
+              {perfilBarbearia?.logoURL && (
+                <img 
+                  src={perfilBarbearia.logoURL} 
+                  alt="Logo" 
+                  className="h-12 w-auto object-contain rounded"
+                  onError={(e) => { e.target.style.display = 'none'; }}
+                />
+              )}
+              <h1 className="text-2xl font-bold text-center">
+                {perfilBarbearia?.nome || 'Agendamento Online'}
+              </h1>
+            </div>
             <div className="w-24"></div>
           </div>
           {perfilBarbearia?.telefone && (
