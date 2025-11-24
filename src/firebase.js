@@ -3,12 +3,13 @@ import { getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyC8wHRbWK-Pxo-dVQ8CJYqGBAzNgpV6c0c",
+  apiKey: "AIzaSyAWIxsDtVMP08zelp-J6Fsi-Y7NijsdsqE",
   authDomain: "painel-de-controle-barbearia.firebaseapp.com",
   projectId: "painel-de-controle-barbearia",
   storageBucket: "painel-de-controle-barbearia.firebasestorage.app",
-  messagingSenderId: "265229631509",
-  appId: "1:265229631509:web:4c84766c49f1e95df67d24"
+  messagingSenderId: "183780407855",
+  appId: "1:183780407855:web:71d40c9bcab5049db6e4da",
+  measurementId: "G-9CDJCZ5TCE"
 };
 
 // Initialize Firebase

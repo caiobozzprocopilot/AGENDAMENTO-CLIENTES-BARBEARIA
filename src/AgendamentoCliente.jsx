@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db } from './firebase';
+import { db, auth } from './firebase';
 import { 
   collection, 
   getDocs, 
@@ -10,6 +10,8 @@ import {
   where, 
   serverTimestamp 
 } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
+import Login from './Login';
 import { 
   Scissors, 
   Sparkles, 
@@ -20,10 +22,15 @@ import {
   ChevronLeft, 
   ChevronRight,
   Users,
-  Store
+  Store,
+  LogOut
 } from 'lucide-react';
 
 const AgendamentoCliente = () => {
+  // Estados de autenticação
+  const [usuario, setUsuario] = useState(null);
+  const [loadingAuth, setLoadingAuth] = useState(true);
+  
   // Estados principais
   const [etapaAtual, setEtapaAtual] = useState(0);
   const [userId, setUserId] = useState(null);
@@ -46,6 +53,22 @@ const AgendamentoCliente = () => {
   // Estados de UI
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState(null);
+
+  // Monitorar estado de autenticação
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUsuario(user);
+      setLoadingAuth(false);
+      
+      if (user) {
+        console.log('✅ Usuário autenticado:', user.email);
+        // Preencher dados do cliente automaticamente
+        setClienteNome(user.displayName || '');
+      }
+    });
+    
+    return () => unsubscribe();
+  }, []);
 
   // Inicialização - buscar userId do localStorage ou URL
   useEffect(() => {
@@ -691,6 +714,15 @@ const AgendamentoCliente = () => {
         <p className="text-gray-600">Confirme suas informações</p>
       </div>
       
+      {/* Info do usuário logado */}
+      {usuario && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <p className="text-blue-800 text-sm">
+            ✅ Logado como: <strong>{usuario.email}</strong>
+          </p>
+        </div>
+      )}
+      
       {/* Formulário */}
       <div className="space-y-4">
         <div>
@@ -816,47 +848,84 @@ const AgendamentoCliente = () => {
     }
   };
 
+  // Se ainda está carregando autenticação
+  if (loadingAuth) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-800 mx-auto mb-4"></div>
+          <p className="text-gray-600">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Se não está autenticado, mostrar tela de login
+  if (!usuario) {
+    return <Login onLoginSuccess={(user) => setUsuario(user)} />;
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       {/* Header */}
-      <header className="bg-gray-800 text-white shadow-lg">
+      <header className="bg-gradient-to-r from-gray-800 to-gray-900 text-white shadow-lg">
         <div className="max-w-2xl mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-start justify-between gap-4">
             {userId && etapaAtual > 0 && (
               <button
                 onClick={() => {
                   localStorage.removeItem('barbeariaId');
                   setUserId(null);
+                  setPerfilBarbearia(null);
                   setEtapaAtual(0);
                   carregarBarbearias();
                 }}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-all duration-200 flex items-center gap-2 shadow-md hover:shadow-lg"
+                className="bg-white/10 hover:bg-white/20 transition-colors p-2 rounded-lg flex-shrink-0"
                 title="Trocar de barbearia"
               >
                 <Store className="w-5 h-5" />
-                <span>Trocar</span>
               </button>
             )}
-            <div className="flex-1 flex flex-col items-center gap-2">
+            
+            {/* Logo e Info */}
+            <div className="flex items-center gap-4 flex-1">
               {perfilBarbearia?.logoURL && (
                 <img 
                   src={perfilBarbearia.logoURL} 
                   alt="Logo" 
-                  className="h-12 w-auto object-contain rounded"
+                  className="h-16 w-16 object-cover rounded-full border-2 border-white/20 shadow-lg flex-shrink-0"
                   onError={(e) => { e.target.style.display = 'none'; }}
                 />
               )}
-              <h1 className="text-2xl font-bold text-center">
-                {perfilBarbearia?.nome || 'Agendamento Online'}
-              </h1>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-2xl font-bold mb-1">
+                  {perfilBarbearia?.nome || 'Agendamento Online'}
+                </h1>
+                {perfilBarbearia?.telefone && (
+                  <p className="text-gray-300 text-sm">
+                    📞 {perfilBarbearia.telefone}
+                  </p>
+                )}
+                {usuario && (
+                  <div className="flex items-center gap-2 mt-2 text-xs">
+                    <div className="bg-green-500/20 text-green-300 px-2 py-1 rounded-full flex items-center gap-1">
+                      <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                      <span className="truncate">{usuario.displayName || usuario.email}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="w-24"></div>
+            
+            {/* Botão Sair */}
+            <button
+              onClick={() => auth.signOut()}
+              className="bg-white/10 hover:bg-white/20 transition-colors p-2 rounded-lg flex-shrink-0"
+              title="Sair da conta"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
           </div>
-          {perfilBarbearia?.telefone && (
-            <p className="text-center text-gray-300 text-sm mt-1">
-              {perfilBarbearia.telefone}
-            </p>
-          )}
         </div>
       </header>
       
